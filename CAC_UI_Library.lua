@@ -1,30 +1,33 @@
--- ==============================================================================
--- CAC ULTIMATE - PREMIUM UI FRAMEWORK
--- Criado para projetos de alto nível.
--- ==============================================================================
+--[[
+    CAC ULTIMATE - PREMIUM UI FRAMEWORK v2.0
+    Arquitetura Pesada, Janela Flutuante, Loading Inteligente e Animações Fluidas.
+]]
 
 local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 local CAC_UI = {}
 
--- Tema extraído do seu Plugin
+-- Tema Escuro Premium (Cores exatas do seu plugin)
 local Theme = {
-    Bg = Color3.fromRGB(12, 12, 12),
-    Panel = Color3.fromRGB(20, 20, 20),
-    PanelHover = Color3.fromRGB(28, 28, 28),
-    Border = Color3.fromRGB(45, 45, 45),
-    TextMain = Color3.fromRGB(240, 240, 240),
-    TextDim = Color3.fromRGB(140, 140, 140),
-    Accent = Color3.fromRGB(255, 255, 255)
+    Bg = Color3.fromRGB(15, 15, 18),
+    Sidebar = Color3.fromRGB(20, 20, 25),
+    Panel = Color3.fromRGB(25, 25, 30),
+    PanelHover = Color3.fromRGB(35, 35, 45),
+    Border = Color3.fromRGB(40, 40, 50),
+    TextMain = Color3.fromRGB(255, 255, 255),
+    TextDim = Color3.fromRGB(150, 150, 160),
+    Accent = Color3.fromRGB(80, 100, 255),
+    Success = Color3.fromRGB(80, 255, 100),
+    Error = Color3.fromRGB(255, 80, 80)
 }
 
-local TI = TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+local TI = TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 
--- Utilitários
 local function Create(className, properties)
     local inst = Instance.new(className)
     for k, v in pairs(properties) do inst[k] = v end
@@ -39,109 +42,147 @@ local function ApplyStroke(parent, color)
     return Create("UIStroke", { Color = color, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = parent })
 end
 
--- ==============================================================================
--- FUNÇÃO PRINCIPAL: CRIAR JANELA
--- ==============================================================================
-function CAC_UI:CreateWindow(Config)
-    local Window = { Tabs = {}, CurrentTab = nil }
-    
-    -- Proteção contra duplicatas
-    if CoreGui:FindFirstChild(Config.Name) then
-        CoreGui:FindFirstChild(Config.Name):Destroy()
+-- Sistema de Arrastar Janela Suave (Smooth Drag)
+local function MakeDraggable(topbarObject, object)
+    local Dragging = nil
+    local DragInput = nil
+    local DragStart = nil
+    local StartPosition = nil
+
+    local function Update(input)
+        local Delta = input.Position - DragStart
+        local pos = UDim2.new(StartPosition.X.Scale, StartPosition.X.Offset + Delta.X, StartPosition.Y.Scale, StartPosition.Y.Offset + Delta.Y)
+        local Tween = TweenService:Create(object, TweenInfo.new(0.15), {Position = pos})
+        Tween:Play()
     end
 
-    local ScreenGui = Create("ScreenGui", { Name = Config.Name, Parent = CoreGui, ZIndexBehavior = Enum.ZIndexBehavior.Sibling })
-    
-    -- TELA DE LOADING PREMIUM
-    local LoadingFrame = Create("Frame", {
-        Parent = ScreenGui, Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Bg, ZIndex = 1000
-    })
-    
-    local LoadingTitle = Create("TextLabel", {
-        Parent = LoadingFrame, Text = Config.LoadingTitle or "CAC ULTIMATE", Font = Enum.Font.GothamBold,
-        TextSize = 28, TextColor3 = Theme.TextMain, Size = UDim2.fromScale(1, 1),
-        Position = UDim2.new(0, 0, -0.05, 0), BackgroundTransparency = 1
-    })
-    
-    local LoadingSub = Create("TextLabel", {
-        Parent = LoadingFrame, Text = "Carregando módulos pesados...\nPode haver travamentos temporários em PCs Low-End.",
-        Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = Theme.TextDim,
-        Size = UDim2.fromScale(1, 1), Position = UDim2.new(0, 0, 0.05, 0), BackgroundTransparency = 1
-    })
-
-    local Spinner = Create("ImageLabel", {
-        Parent = LoadingFrame, Size = UDim2.new(0, 40, 0, 40), Position = UDim2.new(0.5, -20, 0.6, 0),
-        BackgroundTransparency = 1, Image = "rbxassetid://358245233", ImageColor3 = Theme.Accent
-    })
-    
-    -- Animação de Loading (Girando)
-    local spinnerConn = RunService.RenderStepped:Connect(function()
-        Spinner.Rotation = Spinner.Rotation + 3
+    topbarObject.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            Dragging = true
+            DragStart = input.Position
+            StartPosition = object.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then Dragging = false end
+            end)
+        end
     end)
 
-    -- FRAME PRINCIPAL (Oculto no início)
+    topbarObject.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then DragInput = input end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if input == DragInput and Dragging then Update(input) end
+    end)
+end
+
+-- ==============================================================================
+-- MOTOR DE CRIAÇÃO DA JANELA
+-- ==============================================================================
+function CAC_UI:CreateWindow(Config)
+    local Window = { Tabs = {}, CurrentTab = nil, IsLoaded = false }
+    
+    if CoreGui:FindFirstChild(Config.Name) then CoreGui:FindFirstChild(Config.Name):Destroy() end
+
+    local ScreenGui = Create("ScreenGui", { Name = Config.Name, Parent = CoreGui, ZIndexBehavior = Enum.ZIndexBehavior.Sibling })
+
+    -- JANELA PRINCIPAL (Flutuante)
     local MainFrame = Create("Frame", {
-        Parent = ScreenGui, Size = UDim2.new(0, 750, 0, 480), Position = UDim2.new(0.5, -375, 0.5, -240),
-        BackgroundColor3 = Theme.Bg, ClipsDescendants = true, Visible = false
+        Parent = ScreenGui, Size = UDim2.new(0, 750, 0, 450), Position = UDim2.new(0.5, -375, 0.5, -225),
+        BackgroundColor3 = Theme.Bg, ClipsDescendants = true
     })
     ApplyCorner(MainFrame, 10)
     ApplyStroke(MainFrame, Theme.Border)
 
-    -- Sidebar (Esquerda)
+    -- Topbar Invisível para Arrastar
+    local DragTopbar = Create("Frame", {
+        Parent = MainFrame, Size = UDim2.new(1, 0, 0, 40), BackgroundTransparency = 1, ZIndex = 100
+    })
+    MakeDraggable(DragTopbar, MainFrame)
+
+    -- ==============================================================================
+    -- OVERLAY DE LOADING (Fica dentro da janela flutuante)
+    -- ==============================================================================
+    local LoadingOverlay = Create("Frame", {
+        Parent = MainFrame, Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Bg, ZIndex = 2000
+    })
+    
+    local LoadTitle = Create("TextLabel", {
+        Parent = LoadingOverlay, Text = Config.LoadingTitle or "Authenticating...", Font = Enum.Font.GothamBold,
+        TextSize = 24, TextColor3 = Theme.TextMain, Size = UDim2.fromScale(1, 1), Position = UDim2.new(0, 0, -0.05, 0), BackgroundTransparency = 1
+    })
+    
+    local LoadSub = Create("TextLabel", {
+        Parent = LoadingOverlay, Text = "Carregando módulos de alta performance...\nIsto pode levar alguns segundos.",
+        Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = Theme.TextDim, Size = UDim2.fromScale(1, 1), Position = UDim2.new(0, 0, 0.05, 0), BackgroundTransparency = 1
+    })
+
+    local Spinner = Create("ImageLabel", {
+        Parent = LoadingOverlay, Size = UDim2.new(0, 40, 0, 40), Position = UDim2.new(0.5, -20, 0.65, 0),
+        BackgroundTransparency = 1, Image = "rbxassetid://358245233", ImageColor3 = Theme.Accent
+    })
+    local spinnerConn = RunService.RenderStepped:Connect(function() Spinner.Rotation = Spinner.Rotation + 4 end)
+
+    -- FAILSAFE INTELIGENTE: Remove o loading à força após 20 segundos
+    task.delay(20, function()
+        if not Window.IsLoaded then Window:FinishLoading() end
+    end)
+
+    -- ==============================================================================
+    -- CONTEÚDO DA UI (SIDEBAR E ABAS)
+    -- ==============================================================================
     local Sidebar = Create("Frame", {
-        Parent = MainFrame, Size = UDim2.new(0, 180, 1, 0), BackgroundColor3 = Theme.Panel
+        Parent = MainFrame, Size = UDim2.new(0, 180, 1, 0), BackgroundColor3 = Theme.Sidebar
     })
     ApplyStroke(Sidebar, Theme.Border)
     
-    local Title = Create("TextLabel", {
-        Parent = Sidebar, Text = Config.Name, Font = Enum.Font.GothamBold, TextSize = 16,
+    Create("TextLabel", {
+        Parent = Sidebar, Text = "CAC ULTIMATE", Font = Enum.Font.GothamBold, TextSize = 16,
         TextColor3 = Theme.TextMain, Size = UDim2.new(1, 0, 0, 60), BackgroundTransparency = 1
     })
 
     local TabContainer = Create("ScrollingFrame", {
-        Parent = Sidebar, Size = UDim2.new(1, 0, 1, -60), Position = UDim2.new(0, 0, 0, 60),
+        Parent = Sidebar, Size = UDim2.new(1, 0, 1, -80), Position = UDim2.new(0, 0, 0, 60),
         BackgroundTransparency = 1, ScrollBarThickness = 0
     })
-    local TabList = Create("UIListLayout", { Parent = TabContainer, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 5) })
+    Create("UIListLayout", { Parent = TabContainer, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 5), HorizontalAlignment = Enum.HorizontalAlignment.Center })
 
-    -- Área de Conteúdo (Direita)
     local ContentContainer = Create("Frame", {
         Parent = MainFrame, Size = UDim2.new(1, -180, 1, 0), Position = UDim2.new(0, 180, 0, 0), BackgroundTransparency = 1
     })
 
     -- ==============================================================================
-    -- GERENCIAMENTO DE ABAS
+    -- GERENCIADOR DE ABAS
     -- ==============================================================================
     function Window:CreateTab(TabName)
-        local Tab = { Elements = {} }
+        local Tab = {}
         
         local TabBtn = Create("TextButton", {
-            Parent = TabContainer, Size = UDim2.new(1, -20, 0, 35), Position = UDim2.new(0, 10, 0, 0),
-            BackgroundColor3 = Theme.Panel, Text = "  " .. TabName, Font = Enum.Font.GothamMedium,
-            TextSize = 13, TextColor3 = Theme.TextDim, TextXAlignment = Enum.TextXAlignment.Left
+            Parent = TabContainer, Size = UDim2.new(0.9, 0, 0, 35), BackgroundColor3 = Theme.Sidebar,
+            Text = "  " .. TabName, Font = Enum.Font.GothamMedium, TextSize = 13, TextColor3 = Theme.TextDim, TextXAlignment = Enum.TextXAlignment.Left
         })
         ApplyCorner(TabBtn, 6)
 
         local TabPage = Create("ScrollingFrame", {
-            Parent = ContentContainer, Size = UDim2.new(1, -40, 1, -40), Position = UDim2.new(0, 20, 0, 20),
+            Parent = ContentContainer, Size = UDim2.new(1, -20, 1, -20), Position = UDim2.new(0, 10, 0, 10),
             BackgroundTransparency = 1, Visible = false, ScrollBarThickness = 2, ScrollBarImageColor3 = Theme.Border
         })
-        local PageList = Create("UIListLayout", { Parent = TabPage, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 10) })
+        Create("UIListLayout", { Parent = TabPage, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8) })
 
         TabBtn.MouseButton1Click:Connect(function()
             for _, t in pairs(Window.Tabs) do
                 t.Page.Visible = false
-                TweenService:Create(t.Btn, TI, {TextColor3 = Theme.TextDim, BackgroundColor3 = Theme.Panel}):Play()
+                TweenService:Create(t.Btn, TI, {TextColor3 = Theme.TextDim, BackgroundColor3 = Theme.Sidebar}):Play()
             end
             TabPage.Visible = true
-            TweenService:Create(TabBtn, TI, {TextColor3 = Theme.TextMain, BackgroundColor3 = Theme.PanelHover}):Play()
+            TweenService:Create(TabBtn, TI, {TextColor3 = Theme.TextMain, BackgroundColor3 = Theme.Panel}):Play()
         end)
 
         if not Window.CurrentTab then
             Window.CurrentTab = Tab
             TabPage.Visible = true
             TabBtn.TextColor3 = Theme.TextMain
-            TabBtn.BackgroundColor3 = Theme.PanelHover
+            TabBtn.BackgroundColor3 = Theme.Panel
         end
 
         Tab.Btn = TabBtn
@@ -149,80 +190,20 @@ function CAC_UI:CreateWindow(Config)
         table.insert(Window.Tabs, Tab)
 
         -- ==============================================================================
-        -- ELEMENTOS DA ABA (DASHBOARD, BOTÕES, ETC)
+        -- ELEMENTOS DA ABA (Buttons, Inputs, Labels)
         -- ==============================================================================
         
-        -- Criar o Dashboard Premium
-        function Tab:CreateDashboard(DashConfig)
-            local DashFrame = Create("Frame", {
-                Parent = TabPage, Size = UDim2.new(1, 0, 0, 160), BackgroundColor3 = Theme.Panel
+        function Tab:CreateLabel(Text)
+            local Label = Create("TextLabel", {
+                Parent = TabPage, Size = UDim2.new(1, -10, 0, 20), BackgroundTransparency = 1,
+                Text = Text, Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = Theme.TextDim, TextXAlignment = Enum.TextXAlignment.Left
             })
-            ApplyCorner(DashFrame, 8)
-            ApplyStroke(DashFrame, Theme.Border)
-
-            -- Foto de Perfil e Nome
-            local Avatar = Create("ImageLabel", {
-                Parent = DashFrame, Size = UDim2.new(0, 60, 0, 60), Position = UDim2.new(0, 20, 0, 20), BackgroundColor3 = Theme.Bg
-            })
-            ApplyCorner(Avatar, 100)
-            
-            -- Carregar a foto real do jogador
-            task.spawn(function()
-                local thumb, ready = Players:GetUserThumbnailAsync(LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420)
-                if ready then Avatar.Image = thumb end
-            end)
-
-            local Welcome = Create("TextLabel", {
-                Parent = DashFrame, Text = "Bem-vindo(a), " .. LocalPlayer.Name, Font = Enum.Font.GothamBold,
-                TextSize = 18, TextColor3 = Theme.TextMain, Size = UDim2.new(0, 200, 0, 20),
-                Position = UDim2.new(0, 95, 0, 25), BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left
-            })
-
-            local UserIDText = Create("TextLabel", {
-                Parent = DashFrame, Text = "UID: " .. LocalPlayer.UserId, Font = Enum.Font.Gotham,
-                TextSize = 12, TextColor3 = Theme.TextDim, Size = UDim2.new(0, 200, 0, 20),
-                Position = UDim2.new(0, 95, 0, 50), BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left
-            })
-
-            -- Caixa de Informações da Key
-            local KeyBox = Create("Frame", {
-                Parent = DashFrame, Size = UDim2.new(1, -40, 0, 50), Position = UDim2.new(0, 20, 0, 95), BackgroundColor3 = Theme.Bg
-            })
-            ApplyCorner(KeyBox, 6)
-            
-            Create("TextLabel", {
-                Parent = KeyBox, Text = " LICENÇA: " .. (DashConfig.LicenseType or "Padrão"), Font = Enum.Font.GothamBold,
-                TextSize = 12, TextColor3 = Theme.Accent, Size = UDim2.new(0.5, 0, 1, 0), BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left
-            })
-            Create("TextLabel", {
-                Parent = KeyBox, Text = "EXPIRA EM: " .. (DashConfig.Expiration or "Nunca") .. " ", Font = Enum.Font.GothamMedium,
-                TextSize = 12, TextColor3 = Theme.TextDim, Size = UDim2.new(0.5, 0, 1, 0), Position = UDim2.new(0.5, 0, 0, 0), BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Right
-            })
+            return Label
         end
 
-        -- Criar Changelog
-        function Tab:CreateChangelog(Version, UpdatesText)
-            local ChangeFrame = Create("Frame", {
-                Parent = TabPage, Size = UDim2.new(1, 0, 0, 120), BackgroundColor3 = Theme.Panel
-            })
-            ApplyCorner(ChangeFrame, 8)
-            ApplyStroke(ChangeFrame, Theme.Border)
-
-            Create("TextLabel", {
-                Parent = ChangeFrame, Text = "Atualização " .. Version, Font = Enum.Font.GothamBold,
-                TextSize = 14, TextColor3 = Theme.TextMain, Size = UDim2.new(1, -30, 0, 30), Position = UDim2.new(0, 15, 0, 10), BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left
-            })
-
-            Create("TextLabel", {
-                Parent = ChangeFrame, Text = UpdatesText, Font = Enum.Font.Gotham,
-                TextSize = 12, TextColor3 = Theme.TextDim, Size = UDim2.new(1, -30, 1, -50), Position = UDim2.new(0, 15, 0, 40), BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top
-            })
-        end
-
-        -- Botão Padrão
         function Tab:CreateButton(Text, Callback)
             local Btn = Create("TextButton", {
-                Parent = TabPage, Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = Theme.Panel,
+                Parent = TabPage, Size = UDim2.new(1, -10, 0, 40), BackgroundColor3 = Theme.Panel,
                 Text = Text, Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = Theme.TextMain
             })
             ApplyCorner(Btn, 6)
@@ -230,16 +211,22 @@ function CAC_UI:CreateWindow(Config)
 
             Btn.MouseEnter:Connect(function() TweenService:Create(Btn, TI, {BackgroundColor3 = Theme.PanelHover}):Play() end)
             Btn.MouseLeave:Connect(function() TweenService:Create(Btn, TI, {BackgroundColor3 = Theme.Panel}):Play() end)
-            Btn.MouseButton1Click:Connect(Callback)
+            
+            Btn.MouseButton1Click:Connect(function()
+                -- Efeito de clique (Ripple simulado)
+                TweenService:Create(Btn, TweenInfo.new(0.1), {Size = UDim2.new(0.98, -10, 0, 38)}):Play()
+                task.wait(0.1)
+                TweenService:Create(Btn, TweenInfo.new(0.1), {Size = UDim2.new(1, -10, 0, 40)}):Play()
+                Callback()
+            end)
         end
 
-        -- Criar Input de Texto (TextBox)
         function Tab:CreateInput(Placeholder, Callback)
             local InputBg = Create("Frame", {
-                Parent = TabPage, Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = Theme.Bg
+                Parent = TabPage, Size = UDim2.new(1, -10, 0, 40), BackgroundColor3 = Theme.Bg
             })
             ApplyCorner(InputBg, 6)
-            ApplyStroke(InputBg, Theme.Border)
+            local Stroke = ApplyStroke(InputBg, Theme.Border)
 
             local Box = Create("TextBox", {
                 Parent = InputBg, Size = UDim2.new(1, -20, 1, 0), Position = UDim2.new(0, 10, 0, 0),
@@ -248,45 +235,61 @@ function CAC_UI:CreateWindow(Config)
                 TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false
             })
 
-            Box.FocusLost:Connect(function()
-                Callback(Box.Text)
+            Box.Focused:Connect(function() TweenService:Create(Stroke, TI, {Color = Theme.Accent}):Play() end)
+            Box.FocusLost:Connect(function() 
+                TweenService:Create(Stroke, TI, {Color = Theme.Border}):Play()
+                Callback(Box.Text) 
             end)
         end
 
-        -- Criar Texto Informativo (Label)
-        function Tab:CreateLabel(Text)
+        function Tab:CreateDashboard(DashConfig)
+            local DashFrame = Create("Frame", {
+                Parent = TabPage, Size = UDim2.new(1, -10, 0, 120), BackgroundColor3 = Theme.Panel
+            })
+            ApplyCorner(DashFrame, 8)
+            ApplyStroke(DashFrame, Theme.Border)
+
+            local Avatar = Create("ImageLabel", {
+                Parent = DashFrame, Size = UDim2.new(0, 60, 0, 60), Position = UDim2.new(0, 20, 0, 20), BackgroundColor3 = Theme.Bg
+            })
+            ApplyCorner(Avatar, 100)
+            
+            task.spawn(function()
+                local thumb, ready = Players:GetUserThumbnailAsync(LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420)
+                if ready then Avatar.Image = thumb end
+            end)
+
             Create("TextLabel", {
-                Parent = TabPage, Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1,
-                Text = Text, Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = Theme.TextDim,
-                TextXAlignment = Enum.TextXAlignment.Left
+                Parent = DashFrame, Text = "Hello, " .. LocalPlayer.Name, Font = Enum.Font.GothamBold,
+                TextSize = 18, TextColor3 = Theme.TextMain, Size = UDim2.new(0, 200, 0, 20),
+                Position = UDim2.new(0, 95, 0, 25), BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left
+            })
+
+            Create("TextLabel", {
+                Parent = DashFrame, Text = "UID: " .. LocalPlayer.UserId .. " | Status: " .. (DashConfig.LicenseType or "Active"), Font = Enum.Font.Gotham,
+                TextSize = 12, TextColor3 = Theme.TextDim, Size = UDim2.new(0, 200, 0, 20),
+                Position = UDim2.new(0, 95, 0, 50), BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left
             })
         end
 
         return Tab
     end
 
-    -- Função para encerrar o loading e mostrar a UI
+    -- ==============================================================================
+    -- FUNÇÃO DE FINALIZAR LOADING
+    -- ==============================================================================
     function Window:FinishLoading()
+        if Window.IsLoaded then return end
+        Window.IsLoaded = true
         spinnerConn:Disconnect()
+        
         TweenService:Create(Spinner, TI, {ImageTransparency = 1}):Play()
-        TweenService:Create(LoadingTitle, TI, {TextTransparency = 1}):Play()
-        TweenService:Create(LoadingSub, TI, {TextTransparency = 1}):Play()
-        task.wait(0.5)
-        TweenService:Create(LoadingFrame, TI, {BackgroundTransparency = 1}):Play()
-        
-        MainFrame.Visible = true
-        MainFrame.Size = UDim2.new(0, 700, 0, 440)
-        MainFrame.Position = UDim2.new(0.5, -350, 0.5, -220)
-        MainFrame.GroupTransparency = 1
-        
-        TweenService:Create(MainFrame, TI, {
-            Size = UDim2.new(0, 750, 0, 480),
-            Position = UDim2.new(0.5, -375, 0.5, -240),
-            GroupTransparency = 0
-        }):Play()
-        
+        TweenService:Create(LoadTitle, TI, {TextTransparency = 1}):Play()
+        TweenService:Create(LoadSub, TI, {TextTransparency = 1}):Play()
         task.wait(0.3)
-        LoadingFrame:Destroy()
+        TweenService:Create(LoadingOverlay, TI, {BackgroundTransparency = 1}):Play()
+        task.wait(0.3)
+        LoadingOverlay:Destroy()
     end
 
     return Window

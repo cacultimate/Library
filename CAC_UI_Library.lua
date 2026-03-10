@@ -233,6 +233,35 @@ function CAC_UI:CreateWindow(Config)
             Btn.MouseButton1Click:Connect(Callback)
         end
 
+        -- Criar Input de Texto (TextBox)
+        function Tab:CreateInput(Placeholder, Callback)
+            local InputBg = Create("Frame", {
+                Parent = TabPage, Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = Theme.Bg
+            })
+            ApplyCorner(InputBg, 6)
+            ApplyStroke(InputBg, Theme.Border)
+
+            local Box = Create("TextBox", {
+                Parent = InputBg, Size = UDim2.new(1, -20, 1, 0), Position = UDim2.new(0, 10, 0, 0),
+                BackgroundTransparency = 1, Text = "", PlaceholderText = Placeholder,
+                Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = Theme.TextMain,
+                TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false
+            })
+
+            Box.FocusLost:Connect(function()
+                Callback(Box.Text)
+            end)
+        end
+
+        -- Criar Texto Informativo (Label)
+        function Tab:CreateLabel(Text)
+            Create("TextLabel", {
+                Parent = TabPage, Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1,
+                Text = Text, Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = Theme.TextDim,
+                TextXAlignment = Enum.TextXAlignment.Left
+            })
+        end
+
         return Tab
     end
 

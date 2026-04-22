@@ -410,7 +410,7 @@ function Library:CreateWindow(Settings)
         Size = UDim2.new(0, 200, 0, 20),
         Position = UDim2.new(1, -210, 1, -25),
         BackgroundTransparency = 1,
-        Text = "CAC Ultimate | v3.0",
+        Text = "CAC Ultimate | v4.4",
         Font = Enum.Font.GothamMedium,
         TextSize = 10,
         TextXAlignment = Enum.TextXAlignment.Right,
